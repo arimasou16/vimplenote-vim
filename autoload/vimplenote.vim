@@ -122,6 +122,10 @@ function! s:interface.list_note_index_in_scratch_buffer() dict
     echohl ErrorMsg | echomsg "VimpleNote: " res.message | echohl None
     return
   endif
+  let found = filter(copy(self.notes), 'v:val.search == 1')
+  if len(found) > 0
+    let self.notes = []
+  endif
   let datas = webapi#json#decode(res.content)
   for note in datas.data
     if !note.deleted
@@ -143,6 +147,7 @@ function! s:interface.list_note_index_in_scratch_buffer() dict
       \  "key": note.key,
       \  "modifydate": note.modifydate,
       \  "deleted": note.deleted,
+      \  "search": 0,
       \})
     endif
   endfor
@@ -170,9 +175,27 @@ function! s:interface.search_notes_with_tags(...) dict
     return
   endif
   let datas = webapi#json#decode(res.content)
+  for result in datas.Response.Results
+    let url = printf('https://simple-note.appspot.com/api2/data/%s?auth=%s&email=%s', result.key, self.token, webapi#http#encodeURI(self.email))
+    let res = webapi#http#get(url)
+    if res.status !~ '^2'
+      echohl ErrorMsg | echomsg "VimpleNote: " res.message | echohl None
+      return
+    endif
+    let data = webapi#json#decode(res.content)
+    let lines = split(data.content, "\n")
+    call add(self.notes, {
+    \  "title": len(lines) > 0 ? lines[0] : '',
+    \  "tags": data.tags,
+    \  "key": result.key,
+    \  "modifydate": data.modifydate,
+    \  "deleted": data.deleted,
+    \  "search": 1,
+    \})
+  endfor
   call self.open_scratch_buffer("==VimpleNote==")
   silent %d _
-  call setline(1, map(datas.Response.Results, 'printf("%s | [%s]", v:val.key, matchstr(substitute(v:val.content, "\n", " ", "g"), "^.*\\%<60c"))'))
+  call setline(1, map(copy(self.notes), 'printf("%s [%s]", strftime("%Y/%m/%d %H:%M:%S", v:val.modifydate), matchstr(v:val.title, "^.*\\%<60c"))'))
   nnoremap <buffer> <cr> :call <SID>GetNoteToCurrentBuffer(0)<cr>
   setlocal nomodified
 endfunction
@@ -188,11 +211,7 @@ function! s:interface.display_note_in_scratch_buffer(flag) dict
   if line('.') == 0 || getline('.') == ''
     return
   endif
-  if a:flag
-    let note = self.notes[line('.')-1]
-  else
-    let note = { "key" : matchstr(getline('.'), '^[^ ]\+\ze') }
-  endif
+  let note = self.notes[line('.')-1]
   let url = printf('https://simple-note.appspot.com/api2/data/%s?auth=%s&email=%s', note.key, self.token, webapi#http#encodeURI(self.email))
   let res = webapi#http#get(url)
   if res.status !~ '^2'
