@@ -174,6 +174,7 @@ function! s:interface.search_notes_with_tags(...) dict
     echohl ErrorMsg | echomsg "VimpleNote: " res.message | echohl None
     return
   endif
+  let self.notes = []
   let datas = webapi#json#decode(res.content)
   for result in datas.Response.Results
     let url = printf('https://simple-note.appspot.com/api2/data/%s?auth=%s&email=%s', result.key, self.token, webapi#http#encodeURI(self.email))
